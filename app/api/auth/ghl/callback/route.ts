@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { getSupabase } from "@/lib/supabase";
 import { encrypt } from "@/lib/encryption";
 
 const GHL_TOKEN_URL = "https://services.leadconnectorhq.com/oauth/token";
@@ -37,7 +37,6 @@ export async function GET(request: NextRequest) {
     return appRedirect(request, "/connections?error=state_mismatch", isMobile);
   }
 
-  // Exchange code for tokens
   const tokenRes = await fetch(GHL_TOKEN_URL, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -56,50 +55,38 @@ export async function GET(request: NextRequest) {
   }
 
   const tokenData = await tokenRes.json();
-  const {
-    access_token,
-    refresh_token,
-    expires_in,
-    locationId,
-    companyId,
-    userId,
-  } = tokenData;
+  const { access_token, refresh_token, expires_in, locationId, companyId, userId } =
+    tokenData;
 
   if (!access_token || !refresh_token || !locationId) {
     return appRedirect(request, "/connections?error=incomplete_token", isMobile);
   }
 
-  // Resolve label: use custom label if provided, else fetch from GHL
   let accountLabel = stateData.label;
   if (!accountLabel) {
     try {
       const locRes = await fetch(`${GHL_API}/locations/${locationId}`, {
-        headers: {
-          Authorization: `Bearer ${access_token}`,
-          Version: "2021-07-28",
-        },
+        headers: { Authorization: `Bearer ${access_token}`, Version: "2021-07-28" },
         cache: "no-store",
       });
       if (locRes.ok) {
         const locData = await locRes.json();
-        accountLabel =
-          locData.location?.name ?? locData.name ?? locationId;
+        accountLabel = locData.location?.name ?? locData.name ?? locationId;
       }
     } catch {}
   }
   if (!accountLabel) accountLabel = locationId;
 
   const expiresAt = new Date(Date.now() + expires_in * 1000).toISOString();
+  const db = getSupabase();
 
-  // Check for existing row with this locationId
-  const { data: existing } = await supabase
+  const { data: existing } = await db
     .from("ghl_connections")
     .select("id")
     .eq("location_id", locationId)
     .maybeSingle();
 
-  // First-ever connection? Set active automatically
-  const { count } = await supabase
+  const { count } = await db
     .from("ghl_connections")
     .select("*", { count: "exact", head: true });
   const isFirst = (count ?? 0) === 0 && !existing;
@@ -116,12 +103,9 @@ export async function GET(request: NextRequest) {
   };
 
   if (existing) {
-    await supabase
-      .from("ghl_connections")
-      .update(row)
-      .eq("id", existing.id);
+    await db.from("ghl_connections").update(row).eq("id", existing.id);
   } else {
-    await supabase.from("ghl_connections").insert(row);
+    await db.from("ghl_connections").insert(row);
   }
 
   const res = appRedirect(request, "/connections?connected=true", isMobile);

@@ -1,4 +1,4 @@
-import { supabase } from "./supabase";
+import { getSupabase } from "./supabase";
 import { encrypt, decrypt } from "./encryption";
 
 export class GHLNotConnectedError extends Error {
@@ -17,7 +17,7 @@ export interface TokenResult {
 
 /** Refresh a connection's tokens via GHL OAuth and persist the new ones. */
 export async function refreshConnectionTokens(connectionId: string): Promise<string> {
-  const { data: row } = await supabase
+  const { data: row } = await getSupabase()
     .from("ghl_connections")
     .select("id, refresh_token_enc")
     .eq("id", connectionId)
@@ -47,7 +47,7 @@ export async function refreshConnectionTokens(connectionId: string): Promise<str
   const { access_token, refresh_token: newRefresh, expires_in } = data;
   const expiresAt = new Date(Date.now() + expires_in * 1000).toISOString();
 
-  await supabase
+  await getSupabase()
     .from("ghl_connections")
     .update({
       access_token_enc: encrypt(access_token),
@@ -79,7 +79,7 @@ const SELECT_COLS =
   "id, account_label, location_id, access_token_enc, token_expires_at";
 
 export async function getActiveGHLToken(): Promise<TokenResult> {
-  const { data, error } = await supabase
+  const { data, error } = await getSupabase()
     .from("ghl_connections")
     .select(SELECT_COLS)
     .eq("is_active", true)
@@ -97,7 +97,7 @@ export async function getActiveGHLToken(): Promise<TokenResult> {
 }
 
 export async function getGHLTokenById(connectionId: string): Promise<TokenResult> {
-  const { data, error } = await supabase
+  const { data, error } = await getSupabase()
     .from("ghl_connections")
     .select(SELECT_COLS)
     .eq("id", connectionId)

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { getSupabase } from "@/lib/supabase";
 
 export async function POST(request: NextRequest) {
   const { connectionId } = await request.json();
@@ -7,14 +7,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "connectionId required" }, { status: 400 });
   }
 
-  // Check if it was the active connection before deleting
-  const { data: toDelete } = await supabase
+  const db = getSupabase();
+
+  const { data: toDelete } = await db
     .from("ghl_connections")
     .select("is_active")
     .eq("id", connectionId)
     .single();
 
-  const { error } = await supabase
+  const { error } = await db
     .from("ghl_connections")
     .delete()
     .eq("id", connectionId);
@@ -25,9 +26,8 @@ export async function POST(request: NextRequest) {
 
   let newActiveId: string | null = null;
 
-  // If we deleted the active row, promote the most-recently-used remaining row
   if (toDelete?.is_active) {
-    const { data: next } = await supabase
+    const { data: next } = await db
       .from("ghl_connections")
       .select("id")
       .order("last_used_at", { ascending: false, nullsFirst: false })
@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
       .maybeSingle();
 
     if (next) {
-      await supabase
+      await db
         .from("ghl_connections")
         .update({ is_active: true })
         .eq("id", next.id);

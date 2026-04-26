@@ -4,7 +4,7 @@ import {
   getGHLTokenById,
   GHLNotConnectedError,
 } from "@/lib/ghl-token";
-import { supabase } from "@/lib/supabase";
+import { getSupabase } from "@/lib/supabase";
 
 const GHL_API = "https://services.leadconnectorhq.com";
 type MessageType = "SMS" | "Email" | "WhatsApp";
@@ -76,8 +76,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Record last_used_at for analytics / "Last used" display
-  await supabase
+  await getSupabase()
     .from("ghl_connections")
     .update({ last_used_at: new Date().toISOString() })
     .eq("id", activeConnectionId);
