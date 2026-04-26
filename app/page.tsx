@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import type { Contact } from "@/types/contact";
 import type { SendRecord, Channel } from "@/types/message";
 import ContactSearch from "@/components/ContactSearch";
@@ -11,20 +11,20 @@ const RECENT_KEY = "ghl_recent_sends";
 
 export default function Home() {
   const [selected, setSelected] = useState<Contact | null>(null);
-  const [recentSends, setRecentSends] = useState<SendRecord[]>([]);
+  const [recentSends, setRecentSends] = useState<SendRecord[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const raw = localStorage.getItem(RECENT_KEY);
+      return raw ? (JSON.parse(raw) as SendRecord[]) : [];
+    } catch {
+      return [];
+    }
+  });
   const [composeDefaults, setComposeDefaults] = useState<{
     channel: Channel;
     message: string;
   } | null>(null);
   const [fillKey, setFillKey] = useState(0);
-
-  // Hydrate recent sends from localStorage after mount
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(RECENT_KEY);
-      if (raw) setRecentSends(JSON.parse(raw));
-    } catch {}
-  }, []);
 
   const handleSent = (record: SendRecord) => {
     setRecentSends((prev) => {
@@ -69,10 +69,10 @@ export default function Home() {
         {selected && (
           <div id="compose-area" className="mt-4">
             <ComposeMessage
+              key={fillKey}
               contact={selected}
               defaultChannel={composeDefaults?.channel}
               defaultMessage={composeDefaults?.message}
-              fillKey={fillKey}
               onSent={handleSent}
             />
           </div>

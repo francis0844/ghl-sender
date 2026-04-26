@@ -87,25 +87,72 @@ npm run dev
 
 ## Capacitor (iOS / Android)
 
-The mobile build uses `output: 'export'` to produce a static site that Capacitor copies into the native project.
+The mobile app is a native shell (Capacitor) wrapping a static Next.js export. All API calls go to the deployed Vercel backend (`https://ghl-sender.vercel.app`) — the GHL API key never touches the device.
+
+### Prerequisites
+
+| Platform | Requirement |
+|----------|-------------|
+| iOS | Mac + Xcode 15+ + **paid Apple Developer account ($99/yr)** |
+| Android | Android Studio (free) — APK can be shared directly without the Play Store |
+
+### Build and run
 
 ```bash
-# 1. Build the static export
-#    Set the deployed API URL first — the static app must call an external server
-NEXT_PUBLIC_API_BASE_URL=https://your-app.vercel.app npm run build:mobile
-# Output goes to /out
+# 1. Build the static export and sync into native projects (one command)
+npm run build:mobile
+# This runs: NEXT_PUBLIC_API_BASE_URL=https://ghl-sender.vercel.app \
+#            MOBILE_BUILD=true next build && npx cap sync
+# Output goes to /out, then copied into ios/ and android/
 
-# 2. Sync into Capacitor
-npx cap sync
+# 2. Open in the native IDE
+npm run open:ios      # opens Xcode
+npm run open:android  # opens Android Studio
 
-# 3. Open native IDE
-npx cap open ios      # Xcode
-npx cap open android  # Android Studio
+# 3. In Xcode / Android Studio, press Run (▶) to launch on simulator or device
 ```
 
-> **Note:** Static exports cannot run server-side code.  
-> `NEXT_PUBLIC_API_BASE_URL` must point to your deployed Vercel URL so the  
-> native app knows where to send API calls.
+### iOS — Release build for TestFlight
+
+1. In Xcode, select your **Team** under *Signing & Capabilities*.
+2. Set the scheme to **Release**.
+3. **Product → Archive**, then upload to App Store Connect.
+4. In App Store Connect, submit the build to **TestFlight** for internal/external testing.
+5. Testers install via the TestFlight app — no App Store listing required.
+
+> Requires an active **Apple Developer Program** membership ($99/yr).
+
+### Android — Release APK (direct install)
+
+```bash
+# In Android Studio: Build → Generate Signed Bundle / APK → APK
+# Or from the command line:
+cd android && ./gradlew assembleRelease
+# Signed APK: android/app/build/outputs/apk/release/app-release.apk
+```
+
+Share the APK file directly — recipients enable **Install from unknown sources** in Settings and install it without the Play Store.
+
+### App icon
+
+A placeholder SVG icon is at `public/app-icon.svg` (1024×1024, dark navy background with "G"). Replace it with your own artwork and run the following to regenerate all native icon sizes:
+
+```bash
+# After replacing public/app-icon.svg with your 1024×1024 image:
+npx @capacitor/assets generate --iconBackgroundColor '#0f172a' --splashBackgroundColor '#f8fafc'
+```
+
+### How API security works on mobile
+
+```
+Native app (device)
+  └─ WebView loads static HTML/JS from /out
+       └─ fetch("https://ghl-sender.vercel.app/api/contacts/search")
+            └─ Vercel serverless function (has GHL_API_KEY in env)
+                 └─ GHL API
+```
+
+The `GHL_API_KEY` lives only in Vercel's environment — it is never bundled into the app binary.
 
 ---
 
@@ -126,6 +173,8 @@ npx cap open android  # Android Studio
 |--------|-------------|
 | `npm run dev` | Start dev server with hot reload |
 | `npm run build` | Production build (server — API routes enabled) |
-| `npm run build:mobile` | Static export for Capacitor (`MOBILE_BUILD=true`) |
+| `npm run build:mobile` | Static export + `cap sync` (points at Vercel API) |
+| `npm run open:ios` | Open Xcode with the iOS project |
+| `npm run open:android` | Open Android Studio with the Android project |
 | `npm start` | Start production server (after `npm run build`) |
 | `npm run lint` | Run ESLint |

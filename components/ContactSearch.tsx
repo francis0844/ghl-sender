@@ -53,6 +53,7 @@ export default function ContactSearch({ selected, onSelect }: Props) {
   // Search when debounced query changes
   useEffect(() => {
     if (!debouncedQuery.trim() || debouncedQuery.length < 2) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setResults([]);
       setIsOpen(false);
       return;

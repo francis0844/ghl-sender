@@ -25,8 +25,6 @@ interface Props {
   defaultChannel?: Channel;
   /** Pre-fill the message body (used by Resend). */
   defaultMessage?: string;
-  /** Increment to trigger a re-fill without remounting the component. */
-  fillKey?: number;
   /** Called after a successful send so the parent can record it. */
   onSent?: (record: SendRecord) => void;
 }
@@ -35,7 +33,6 @@ export default function ComposeMessage({
   contact,
   defaultChannel,
   defaultMessage,
-  fillKey = 0,
   onSent,
 }: Props) {
   const [channel, setChannel] = useState<Channel>(defaultChannel ?? "SMS");
@@ -48,15 +45,6 @@ export default function ComposeMessage({
   const unmounted = useRef(false);
   useEffect(() => () => { unmounted.current = true; }, []);
   useEffect(() => () => clearTimeout(toastTimer.current), []);
-
-  // Re-fill when the parent signals a Resend (fillKey increments)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    if (fillKey > 0) {
-      setChannel(defaultChannel ?? "SMS");
-      setMessage(defaultMessage ?? "");
-    }
-  }, [fillKey]);
 
   const charCount = message.length;
   const isSmsOverLimit = channel === "SMS" && charCount > SMS_LIMIT;
