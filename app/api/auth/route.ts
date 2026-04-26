@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "crypto";
 
-/** Must match the token derivation in middleware.ts */
+/** Must match sessionToken() in proxy.ts — mixes in TOKEN_ENCRYPTION_KEY so the
+ *  cookie value cannot be reproduced from the password alone via offline brute-force. */
 function sessionToken(password: string): string {
-  return createHash("sha256").update(password).digest("hex");
+  const secret = process.env.TOKEN_ENCRYPTION_KEY ?? "fallback";
+  return createHash("sha256")
+    .update(secret)
+    .update(password)
+    .digest("hex");
 }
 
 export async function POST(request: NextRequest) {

@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 
+/** Must match sessionToken() in app/api/auth/route.ts — mixes in TOKEN_ENCRYPTION_KEY
+ *  so the cookie value cannot be reproduced from the password alone via offline brute-force. */
 async function sessionToken(password: string): Promise<string> {
-  const data = new TextEncoder().encode(password);
+  const secret = process.env.TOKEN_ENCRYPTION_KEY ?? "fallback";
+  // Encode secret+password as one UTF-8 buffer (same byte sequence as Node's .update(secret).update(password))
+  const data = new TextEncoder().encode(secret + password);
   const digest = await crypto.subtle.digest("SHA-256", data);
   return Array.from(new Uint8Array(digest))
     .map((b) => b.toString(16).padStart(2, "0"))

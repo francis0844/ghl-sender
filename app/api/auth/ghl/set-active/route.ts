@@ -9,7 +9,8 @@ export async function POST(request: NextRequest) {
 
   const db = getSupabase();
 
-  await db.from("ghl_connections").update({ is_active: false }).not("id", "is", null);
+  // Target only the currently active row to avoid a window where no account is active
+  await db.from("ghl_connections").update({ is_active: false }).eq("is_active", true);
 
   const { data, error } = await db
     .from("ghl_connections")
