@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { Settings } from "lucide-react";
 import type { Contact } from "@/types/contact";
 import type { SendRecord, Channel } from "@/types/message";
 import ContactSearch from "@/components/ContactSearch";
@@ -74,7 +76,16 @@ export default function Home() {
           <h1 className="text-xl font-bold tracking-tight text-foreground">
             GHL Sender
           </h1>
-          <AccountSwitcher />
+          <div className="flex items-center gap-1">
+            <AccountSwitcher />
+            <Link
+              href="/connections"
+              aria-label="Manage accounts"
+              className="h-10 w-10 flex items-center justify-center rounded-full text-muted-foreground active:bg-muted transition-colors"
+            >
+              <Settings size={18} aria-hidden />
+            </Link>
+          </div>
         </div>
       </header>
 

@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Plus, Link2Off, X } from "lucide-react";
+import Link from "next/link";
+import { Plus, Link2Off, X, ArrowLeft } from "lucide-react";
 import ConnectionCard from "@/components/ConnectionCard";
 import AddConnectionSheet from "@/components/AddConnectionSheet";
 import { cn } from "@/lib/utils";
@@ -144,14 +145,18 @@ export default function ConnectionsManager() {
         className="sticky top-0 z-10 px-4 pb-4 border-b border-border bg-card/90 backdrop-blur-sm"
         style={{ paddingTop: "calc(env(safe-area-inset-top) + 14px)" }}
       >
-        <div className="flex items-center justify-between gap-3">
-          <div>
+        <div className="flex items-center gap-3">
+          <Link
+            href="/"
+            aria-label="Back"
+            className="h-9 w-9 flex items-center justify-center rounded-full text-muted-foreground active:bg-muted transition-colors shrink-0"
+          >
+            <ArrowLeft size={18} aria-hidden />
+          </Link>
+          <div className="flex-1 min-w-0">
             <h1 className="text-xl font-bold tracking-tight text-foreground">
-              GoHighLevel Accounts
+              Accounts
             </h1>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Connect one or more GHL locations and switch between them.
-            </p>
           </div>
           <button
             type="button"
