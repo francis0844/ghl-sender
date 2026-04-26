@@ -1,12 +1,11 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, KeyboardEvent } from "react";
 import { Search, X, Phone, Mail, User, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import type { Contact } from "@/types/contact";
-import ComposeMessage from "@/components/ComposeMessage";
 
 function useDebounce<T>(value: T, delay: number): T {
   const [debounced, setDebounced] = useState(value);
@@ -17,21 +16,23 @@ function useDebounce<T>(value: T, delay: number): T {
   return debounced;
 }
 
-// In Capacitor production builds set NEXT_PUBLIC_API_BASE_URL to the
-// deployed server URL; leave empty for dev / web server usage.
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 
-export default function ContactSearch() {
+interface Props {
+  selected: Contact | null;
+  onSelect: (contact: Contact | null) => void;
+}
+
+export default function ContactSearch({ selected, onSelect }: Props) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Contact[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
-  const [selected, setSelected] = useState<Contact | null>(null);
 
   const debouncedQuery = useDebounce(query, 300);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
-  // Close the dropdown when the user taps/clicks outside it
+  // Close dropdown on outside tap / click
   useEffect(() => {
     function handleOutside(e: MouseEvent | TouchEvent) {
       if (
@@ -49,7 +50,7 @@ export default function ContactSearch() {
     };
   }, []);
 
-  // Fire search whenever the debounced query changes
+  // Search when debounced query changes
   useEffect(() => {
     if (!debouncedQuery.trim() || debouncedQuery.length < 2) {
       setResults([]);
@@ -61,6 +62,9 @@ export default function ContactSearch() {
 
     const doSearch = async () => {
       setIsLoading(true);
+      setIsOpen(true); // Open immediately → shows skeleton while request is in-flight
+      setResults([]);
+
       try {
         const res = await fetch(
           `${API_BASE}/api/contacts/search?query=${encodeURIComponent(debouncedQuery)}`
@@ -69,7 +73,6 @@ export default function ContactSearch() {
         const data: { contacts: Contact[] } = await res.json();
         if (!cancelled) {
           setResults(data.contacts ?? []);
-          setIsOpen(true);
         }
       } catch {
         if (!cancelled) setResults([]);
@@ -85,19 +88,30 @@ export default function ContactSearch() {
   }, [debouncedQuery]);
 
   const handleSelect = (contact: Contact) => {
-    setSelected(contact);
+    onSelect(contact);
     setQuery("");
     setResults([]);
     setIsOpen(false);
   };
 
-  const handleClearSelected = () => {
-    setSelected(null);
+  // Keyboard: Enter selects first result, Escape clears search
+  const handleInputKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      setQuery("");
+      setIsOpen(false);
+      setResults([]);
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (!isLoading && results.length > 0) {
+        handleSelect(results[0]);
+      }
+    }
   };
 
   return (
     <div className="flex flex-col gap-4">
-      {/* ── Search input + results dropdown ── */}
+      {/* ── Search input + dropdown ── */}
       <div ref={wrapperRef} className="relative">
         <div className="relative">
           <Search
@@ -110,11 +124,15 @@ export default function ContactSearch() {
             placeholder="Search contacts…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={handleInputKeyDown}
             className="pl-10 pr-10"
             autoComplete="off"
             autoCorrect="off"
             autoCapitalize="none"
             spellCheck={false}
+            aria-label="Search contacts"
+            aria-expanded={isOpen}
+            aria-haspopup="listbox"
           />
           {isLoading && (
             <Loader2
@@ -125,14 +143,36 @@ export default function ContactSearch() {
           )}
         </div>
 
-        {/* Dropdown */}
+        {/* ── Dropdown (skeleton while loading, results or empty state after) ── */}
         {isOpen && (
           <div
             role="listbox"
             aria-label="Contact results"
             className="absolute z-20 left-0 right-0 mt-1.5 rounded-2xl border border-border bg-card shadow-lg overflow-hidden"
           >
-            {results.length > 0 ? (
+            {isLoading ? (
+              /* Loading skeleton */
+              <>
+                {[75, 60, 85].map((w, i) => (
+                  <div
+                    key={i}
+                    className={cn(
+                      "px-4 py-3.5",
+                      i < 2 && "border-b border-border"
+                    )}
+                  >
+                    <div
+                      className="h-3.5 bg-muted rounded-full animate-pulse mb-1.5"
+                      style={{ width: `${w}%` }}
+                    />
+                    <div
+                      className="h-3 bg-muted rounded-full animate-pulse"
+                      style={{ width: `${w - 25}%` }}
+                    />
+                  </div>
+                ))}
+              </>
+            ) : results.length > 0 ? (
               results.map((contact, idx) => (
                 <button
                   key={contact.contactId}
@@ -179,10 +219,9 @@ export default function ContactSearch() {
                   {selected.name}
                 </h2>
               </div>
-              {/* 48×48 tap target for the dismiss button */}
               <button
                 type="button"
-                onClick={handleClearSelected}
+                onClick={() => onSelect(null)}
                 aria-label="Clear selected contact"
                 className="h-12 w-12 flex items-center justify-center rounded-full text-muted-foreground active:bg-muted transition-colors shrink-0"
               >
@@ -195,11 +234,7 @@ export default function ContactSearch() {
             <ul className="space-y-1">
               {selected.phone && (
                 <li className="flex items-center gap-3">
-                  <Phone
-                    size={15}
-                    aria-hidden
-                    className="text-muted-foreground shrink-0"
-                  />
+                  <Phone size={15} aria-hidden className="text-muted-foreground shrink-0" />
                   <a
                     href={`tel:${selected.phone}`}
                     className="text-sm text-foreground min-h-[48px] flex items-center"
@@ -210,11 +245,7 @@ export default function ContactSearch() {
               )}
               {selected.email && (
                 <li className="flex items-center gap-3">
-                  <Mail
-                    size={15}
-                    aria-hidden
-                    className="text-muted-foreground shrink-0"
-                  />
+                  <Mail size={15} aria-hidden className="text-muted-foreground shrink-0" />
                   <a
                     href={`mailto:${selected.email}`}
                     className="text-sm text-foreground min-h-[48px] flex items-center break-all"
@@ -227,9 +258,6 @@ export default function ContactSearch() {
           </CardContent>
         </Card>
       )}
-
-      {/* ── Compose + send flow (shown once a contact is selected) ── */}
-      {selected && <ComposeMessage contact={selected} />}
     </div>
   );
 }

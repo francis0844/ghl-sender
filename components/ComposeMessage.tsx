@@ -6,8 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import type { Contact } from "@/types/contact";
-
-type Channel = "SMS" | "Email" | "WhatsApp";
+import type { Channel, SendRecord } from "@/types/message";
 
 const CHANNELS: Channel[] = ["SMS", "Email", "WhatsApp"];
 const SMS_LIMIT = 160;
@@ -20,24 +19,48 @@ interface ToastState {
   text: string;
 }
 
-export default function ComposeMessage({ contact }: { contact: Contact }) {
-  const [channel, setChannel] = useState<Channel>("SMS");
-  const [message, setMessage] = useState("");
+interface Props {
+  contact: Contact;
+  /** Pre-fill the channel (used by Resend). */
+  defaultChannel?: Channel;
+  /** Pre-fill the message body (used by Resend). */
+  defaultMessage?: string;
+  /** Increment to trigger a re-fill without remounting the component. */
+  fillKey?: number;
+  /** Called after a successful send so the parent can record it. */
+  onSent?: (record: SendRecord) => void;
+}
+
+export default function ComposeMessage({
+  contact,
+  defaultChannel,
+  defaultMessage,
+  fillKey = 0,
+  onSent,
+}: Props) {
+  const [channel, setChannel] = useState<Channel>(defaultChannel ?? "SMS");
+  const [message, setMessage] = useState(defaultMessage ?? "");
   const [isSending, setIsSending] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
 
   const previewRef = useRef<HTMLDivElement>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  // Tracks whether this component instance has been unmounted
   const unmounted = useRef(false);
   useEffect(() => () => { unmounted.current = true; }, []);
-  // Clean up toast timer on unmount
   useEffect(() => () => clearTimeout(toastTimer.current), []);
+
+  // Re-fill when the parent signals a Resend (fillKey increments)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (fillKey > 0) {
+      setChannel(defaultChannel ?? "SMS");
+      setMessage(defaultMessage ?? "");
+    }
+  }, [fillKey]);
 
   const charCount = message.length;
   const isSmsOverLimit = channel === "SMS" && charCount > SMS_LIMIT;
-  const isSmsNearLimit =
-    channel === "SMS" && charCount >= SMS_WARN && !isSmsOverLimit;
+  const isSmsNearLimit = channel === "SMS" && charCount >= SMS_WARN && !isSmsOverLimit;
 
   const missingContactInfo =
     (channel === "Email" && !contact.email) ||
@@ -46,7 +69,7 @@ export default function ComposeMessage({ contact }: { contact: Contact }) {
   const canSend =
     !!message.trim() && !isSmsOverLimit && !isSending && !missingContactInfo;
 
-  // Scroll the preview panel into view when the user first starts typing
+  // Scroll preview into view when the user first starts typing
   useEffect(() => {
     if (message.length === 1 && previewRef.current) {
       previewRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -63,24 +86,35 @@ export default function ComposeMessage({ contact }: { contact: Contact }) {
 
   const handleSend = async () => {
     if (!canSend) return;
+    const body = message.trim();
+    const sentChannel = channel;
     setIsSending(true);
+
     try {
       const res = await fetch(`${API_BASE}/api/messages/send`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contactId: contact.contactId,
-          type: channel,
-          message: message.trim(),
+          type: sentChannel,
+          message: body,
         }),
       });
       const data: { error?: string } = await res.json();
       if (unmounted.current) return;
+
       if (!res.ok) {
         showToast("error", data.error ?? "Failed to send message");
       } else {
         showToast("success", `Message sent to ${contact.name}`);
         setMessage("");
+        onSent?.({
+          id: crypto.randomUUID(),
+          contact,
+          channel: sentChannel,
+          message: body,
+          sentAt: new Date().toISOString(),
+        });
       }
     } catch {
       if (!unmounted.current) {
@@ -94,7 +128,7 @@ export default function ComposeMessage({ contact }: { contact: Contact }) {
   return (
     <>
       <div className="flex flex-col gap-4">
-        {/* ── Divider ── */}
+        {/* Divider separating the contact card from the compose area */}
         <div className="border-t border-border" />
 
         {/* ── Channel selector ── */}
@@ -126,7 +160,6 @@ export default function ComposeMessage({ contact }: { contact: Contact }) {
             ))}
           </div>
 
-          {/* Warning if contact is missing the required info for this channel */}
           {missingContactInfo && (
             <p className="mt-1.5 text-xs text-amber-600" role="alert">
               {channel === "Email"
@@ -150,7 +183,6 @@ export default function ComposeMessage({ contact }: { contact: Contact }) {
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             aria-label="Message body"
-            // fontSize 16px prevents iOS auto-zoom on focus
             style={{ fontSize: "16px" }}
             className={cn(
               "min-h-[120px]",
@@ -175,14 +207,18 @@ export default function ComposeMessage({ contact }: { contact: Contact }) {
           )}
         </div>
 
-        {/* ── Real-time preview panel ── */}
+        {/* ── Real-time preview ── */}
         <div ref={previewRef}>
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
             Preview
           </p>
-          <Card className={cn("transition-opacity duration-200", message.trim() ? "opacity-100" : "opacity-60")}>
+          <Card
+            className={cn(
+              "transition-opacity duration-200",
+              message.trim() ? "opacity-100" : "opacity-60"
+            )}
+          >
             <CardContent className="pt-4 pb-5">
-              {/* Recipient + channel badge */}
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <p className="text-[11px] text-muted-foreground uppercase tracking-wide leading-none mb-0.5">
@@ -197,16 +233,13 @@ export default function ComposeMessage({ contact }: { contact: Contact }) {
                 </span>
               </div>
 
-              {/* iMessage-style gray bubble — left-aligned, incoming style */}
+              {/* iMessage-style gray bubble — incoming / left-aligned */}
               <div className="flex items-end gap-2.5">
-                {/* Avatar */}
                 <div className="h-7 w-7 rounded-full bg-muted flex items-center justify-center shrink-0">
                   <span className="text-[11px] font-bold text-muted-foreground">
                     {contact.name.charAt(0).toUpperCase()}
                   </span>
                 </div>
-
-                {/* Bubble */}
                 <div
                   className="max-w-[82%] px-4 py-2.5"
                   style={{
@@ -218,9 +251,7 @@ export default function ComposeMessage({ contact }: { contact: Contact }) {
                     className="text-sm leading-relaxed whitespace-pre-wrap break-words min-h-[20px]"
                     style={{ color: "#1c1c1e" }}
                   >
-                    {message.trim() ? (
-                      message.trim()
-                    ) : (
+                    {message.trim() || (
                       <span style={{ color: "#8e8e93", fontStyle: "italic" }}>
                         Your message will appear here…
                       </span>
@@ -265,18 +296,15 @@ export default function ComposeMessage({ contact }: { contact: Contact }) {
         </div>
       </div>
 
-      {/* ── Toast notification — fixed, above the sticky button ── */}
+      {/* ── Toast — fixed above the sticky button ── */}
       {toast && (
         <div
           role="alert"
           aria-live="assertive"
           className={cn(
-            "fixed left-4 right-4 z-50",
-            "flex items-start justify-between gap-3",
+            "fixed left-4 right-4 z-50 flex items-start justify-between gap-3",
             "px-4 py-3.5 rounded-2xl shadow-xl text-sm font-medium",
-            toast.type === "success"
-              ? "bg-emerald-500 text-white"
-              : "bg-red-500 text-white"
+            toast.type === "success" ? "bg-emerald-500 text-white" : "bg-red-500 text-white"
           )}
           style={{
             bottom: "calc(max(env(safe-area-inset-bottom, 0px), 0px) + 88px)",
@@ -288,7 +316,7 @@ export default function ComposeMessage({ contact }: { contact: Contact }) {
             type="button"
             onClick={() => setToast(null)}
             aria-label="Dismiss"
-            className="shrink-0 opacity-80 active:opacity-100 min-h-[24px] min-w-[24px] flex items-center justify-center"
+            className="shrink-0 min-h-[24px] min-w-[24px] flex items-center justify-center opacity-80 active:opacity-100"
           >
             <X size={14} aria-hidden />
           </button>

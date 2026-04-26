@@ -1,15 +1,90 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import type { Contact } from "@/types/contact";
+import type { SendRecord, Channel } from "@/types/message";
 import ContactSearch from "@/components/ContactSearch";
+import ComposeMessage from "@/components/ComposeMessage";
+import RecentSends from "@/components/RecentSends";
+
+const RECENT_KEY = "ghl_recent_sends";
 
 export default function Home() {
+  const [selected, setSelected] = useState<Contact | null>(null);
+  const [recentSends, setRecentSends] = useState<SendRecord[]>([]);
+  const [composeDefaults, setComposeDefaults] = useState<{
+    channel: Channel;
+    message: string;
+  } | null>(null);
+  const [fillKey, setFillKey] = useState(0);
+
+  // Hydrate recent sends from localStorage after mount
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(RECENT_KEY);
+      if (raw) setRecentSends(JSON.parse(raw));
+    } catch {}
+  }, []);
+
+  const handleSent = (record: SendRecord) => {
+    setRecentSends((prev) => {
+      const next = [record, ...prev].slice(0, 10);
+      try {
+        localStorage.setItem(RECENT_KEY, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  const handleResend = (record: SendRecord) => {
+    setSelected(record.contact);
+    setComposeDefaults({ channel: record.channel, message: record.message });
+    setFillKey((k) => k + 1);
+    // Let React finish rendering the compose area before scrolling
+    setTimeout(
+      () =>
+        document
+          .getElementById("compose-area")
+          ?.scrollIntoView({ behavior: "smooth", block: "start" }),
+      50
+    );
+  };
+
   return (
     <div className="flex flex-col min-h-full">
-      <header className="sticky top-0 z-10 px-4 py-4 border-b border-border bg-card/90 backdrop-blur-sm">
+      {/* Header — handles safe-area-inset-top so its background fills the status bar */}
+      <header
+        className="sticky top-0 z-10 px-4 pb-4 border-b border-border bg-card/90 backdrop-blur-sm"
+        style={{ paddingTop: "calc(env(safe-area-inset-top) + 14px)" }}
+      >
         <h1 className="text-xl font-bold tracking-tight text-foreground">
           GHL Sender
         </h1>
       </header>
+
       <main className="flex-1 px-4 py-5 max-w-lg mx-auto w-full">
-        <ContactSearch />
+        <ContactSearch selected={selected} onSelect={setSelected} />
+
+        {/* Compose section — rendered by page so state can be reset on Resend */}
+        {selected && (
+          <div id="compose-area" className="mt-4">
+            <ComposeMessage
+              contact={selected}
+              defaultChannel={composeDefaults?.channel}
+              defaultMessage={composeDefaults?.message}
+              fillKey={fillKey}
+              onSent={handleSent}
+            />
+          </div>
+        )}
+
+        <RecentSends records={recentSends} onResend={handleResend} />
+
+        <footer className="mt-10 pb-28 text-center">
+          <p className="text-xs text-muted-foreground/50 select-none">
+            Powered by GHL API
+          </p>
+        </footer>
       </main>
     </div>
   );
