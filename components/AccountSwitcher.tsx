@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { ChevronDown, Check } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { ChevronDown, Check, Settings } from "lucide-react";
+import Link from "next/link";
 import { BottomSheet } from "@/components/ui/bottom-sheet";
 import { cn } from "@/lib/utils";
 import type { GHLConnection } from "@/types/ghl-connection";
 
 interface Props {
-  /** Called after successfully switching the active connection. */
   onSwitch?: (connection: GHLConnection) => void;
 }
 
@@ -16,12 +16,21 @@ export default function AccountSwitcher({ onSwitch }: Props) {
   const [isOpen, setIsOpen] = useState(false);
   const [isSwitching, setIsSwitching] = useState(false);
 
-  useEffect(() => {
+  const loadConnections = useCallback(() => {
     fetch("/api/connections")
       .then((r) => r.json())
       .then((d) => setConnections(d.connections ?? []))
       .catch(() => {});
   }, []);
+
+  // Load on mount
+  useEffect(() => { loadConnections(); }, [loadConnections]);
+
+  // Reload every time the sheet opens so newly added accounts appear
+  const handleOpen = () => {
+    loadConnections();
+    setIsOpen(true);
+  };
 
   const active = connections.find((c) => c.is_active);
 
@@ -53,20 +62,14 @@ export default function AccountSwitcher({ onSwitch }: Props) {
     <>
       <button
         type="button"
-        onClick={() => connections.length > 1 && setIsOpen(true)}
-        className={cn(
-          "flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium transition-colors",
-          "text-foreground active:bg-muted",
-          connections.length <= 1 && "pointer-events-none"
-        )}
+        onClick={handleOpen}
+        className="flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium text-foreground active:bg-muted transition-colors"
       >
         <span className="h-2 w-2 rounded-full bg-emerald-500 shrink-0" />
         <span className="max-w-[160px] truncate">
           {active?.account_label ?? "No account"}
         </span>
-        {connections.length > 1 && (
-          <ChevronDown size={14} aria-hidden className="text-muted-foreground shrink-0" />
-        )}
+        <ChevronDown size={14} aria-hidden className="text-muted-foreground shrink-0" />
       </button>
 
       <BottomSheet
@@ -74,7 +77,7 @@ export default function AccountSwitcher({ onSwitch }: Props) {
         onClose={() => setIsOpen(false)}
         title="Switch Account"
       >
-        <ul className="px-4 pb-2 flex flex-col gap-1">
+        <ul className="px-4 flex flex-col gap-1">
           {connections.map((conn) => (
             <li key={conn.id}>
               <button
@@ -111,6 +114,18 @@ export default function AccountSwitcher({ onSwitch }: Props) {
             </li>
           ))}
         </ul>
+
+        {/* Manage link */}
+        <div className="px-4 pt-2 pb-1 border-t border-border mt-2">
+          <Link
+            href="/connections"
+            onClick={() => setIsOpen(false)}
+            className="flex items-center gap-2 px-4 py-3 rounded-xl text-sm text-muted-foreground active:bg-muted transition-colors"
+          >
+            <Settings size={15} aria-hidden />
+            Manage accounts
+          </Link>
+        </div>
       </BottomSheet>
     </>
   );
