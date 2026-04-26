@@ -99,7 +99,7 @@ export async function GET(request: NextRequest) {
     access_token_enc: encrypt(access_token),
     refresh_token_enc: encrypt(refresh_token),
     token_expires_at: expiresAt,
-    ...(isFirst ? { is_active: true } : {}),
+    is_active: isFirst,
   };
 
   if (existing) {

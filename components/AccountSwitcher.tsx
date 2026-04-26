@@ -29,7 +29,6 @@ export default function AccountSwitcher({ onSwitch }: Props) {
   useEffect(() => { loadConnections(); }, [loadConnections]);
 
   const handleOpen = () => {
-    loadConnections();
     setIsOpen(true);
   };
 

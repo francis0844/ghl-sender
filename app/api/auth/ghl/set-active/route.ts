@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
 
   const db = getSupabase();
 
-  await db.from("ghl_connections").update({ is_active: false }).neq("id", "");
+  await db.from("ghl_connections").update({ is_active: false }).not("id", "is", null);
 
   const { data, error } = await db
     .from("ghl_connections")
