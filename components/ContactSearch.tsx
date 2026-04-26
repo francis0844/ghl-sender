@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import type { Contact } from "@/types/contact";
+import ComposeMessage from "@/components/ComposeMessage";
 
 function useDebounce<T>(value: T, delay: number): T {
   const [debounced, setDebounced] = useState(value);
@@ -226,6 +227,9 @@ export default function ContactSearch() {
           </CardContent>
         </Card>
       )}
+
+      {/* ── Compose + send flow (shown once a contact is selected) ── */}
+      {selected && <ComposeMessage contact={selected} />}
     </div>
   );
 }
