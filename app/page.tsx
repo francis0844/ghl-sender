@@ -1,15 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import type { Contact } from "@/types/contact";
 import type { SendRecord, Channel } from "@/types/message";
 import ContactSearch from "@/components/ContactSearch";
 import ComposeMessage from "@/components/ComposeMessage";
 import RecentSends from "@/components/RecentSends";
+import AccountSwitcher from "@/components/AccountSwitcher";
 
 const RECENT_KEY = "ghl_recent_sends";
 
 export default function Home() {
+  const router = useRouter();
   const [selected, setSelected] = useState<Contact | null>(null);
   const [recentSends, setRecentSends] = useState<SendRecord[]>(() => {
     if (typeof window === "undefined") return [];
@@ -25,6 +28,16 @@ export default function Home() {
     message: string;
   } | null>(null);
   const [fillKey, setFillKey] = useState(0);
+
+  // Redirect to /connections if there are no connected accounts
+  useEffect(() => {
+    fetch("/api/connections")
+      .then((r) => r.json())
+      .then((d) => {
+        if ((d.connections ?? []).length === 0) router.replace("/connections");
+      })
+      .catch(() => {});
+  }, [router]);
 
   const handleSent = (record: SendRecord) => {
     setRecentSends((prev) => {
@@ -57,9 +70,12 @@ export default function Home() {
         className="sticky top-0 z-10 px-4 pb-4 border-b border-border bg-card/90 backdrop-blur-sm"
         style={{ paddingTop: "calc(env(safe-area-inset-top) + 14px)" }}
       >
-        <h1 className="text-xl font-bold tracking-tight text-foreground">
-          GHL Sender
-        </h1>
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="text-xl font-bold tracking-tight text-foreground">
+            GHL Sender
+          </h1>
+          <AccountSwitcher />
+        </div>
       </header>
 
       <main className="flex-1 px-4 py-5 max-w-lg mx-auto w-full">

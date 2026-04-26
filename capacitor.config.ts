@@ -6,10 +6,16 @@ const config: CapacitorConfig = {
   webDir: "out",
 
   server: {
-    // Allow the native WebView to navigate to the production API so that
-    // fetch() calls to NEXT_PUBLIC_API_BASE_URL are not blocked by the OS.
     allowNavigation: ["ghl-sender.vercel.app"],
   },
+
+  // Deep-link URL scheme for OAuth callback (native only).
+  // Register this in:
+  //   iOS:     ios/App/App/Info.plist → CFBundleURLSchemes → ["com.andyjorgensen.ghlsender"]
+  //   Android: android/app/src/main/AndroidManifest.xml → intent-filter with
+  //            scheme="com.andyjorgensen.ghlsender" host="callback"
+  // Also add "com.andyjorgensen.ghlsender://callback" as a second redirect URI
+  // in your GHL Marketplace App settings alongside the Vercel redirect URI.
 
   plugins: {
     SplashScreen: {
@@ -21,7 +27,6 @@ const config: CapacitorConfig = {
       splashImmersive: false,
     },
     StatusBar: {
-      // Match the app's --foreground token (#0f172a = dark navy)
       backgroundColor: "#f8fafc",
       style: "DARK",
       overlaysWebView: false,
