@@ -3,35 +3,24 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Settings } from "lucide-react";
-import type { Contact } from "@/types/contact";
-import type { SendRecord, Channel } from "@/types/message";
-import ContactSearch from "@/components/ContactSearch";
-import ComposeMessage from "@/components/ComposeMessage";
-import RecentSends from "@/components/RecentSends";
+import { Settings, History } from "lucide-react";
 import AccountSwitcher from "@/components/AccountSwitcher";
+import ContactsTab from "@/components/ContactsTab";
+import SmartListsTab from "@/components/SmartListsTab";
+import ComposeSheet from "@/components/ComposeSheet";
+import type { Contact } from "@/types/contact";
 
-const RECENT_KEY = "ghl_recent_sends";
+type Tab = "contacts" | "smart-lists";
+
+export type ComposeTarget =
+  | { type: "contacts"; contacts: Contact[] }
+  | { type: "smart-list"; smartListId: string; smartListName: string; contacts: Contact[] };
 
 export default function Home() {
   const router = useRouter();
-  const [selected, setSelected] = useState<Contact | null>(null);
-  const [recentSends, setRecentSends] = useState<SendRecord[]>(() => {
-    if (typeof window === "undefined") return [];
-    try {
-      const raw = localStorage.getItem(RECENT_KEY);
-      return raw ? (JSON.parse(raw) as SendRecord[]) : [];
-    } catch {
-      return [];
-    }
-  });
-  const [composeDefaults, setComposeDefaults] = useState<{
-    channel: Channel;
-    message: string;
-  } | null>(null);
-  const [fillKey, setFillKey] = useState(0);
+  const [activeTab, setActiveTab] = useState<Tab>("contacts");
+  const [composeTarget, setComposeTarget] = useState<ComposeTarget | null>(null);
 
-  // Redirect to /connections if there are no connected accounts
   useEffect(() => {
     fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL ?? ""}/api/connections`)
       .then((r) => r.json())
@@ -41,43 +30,23 @@ export default function Home() {
       .catch(() => {});
   }, [router]);
 
-  const handleSent = (record: SendRecord) => {
-    setRecentSends((prev) => {
-      const next = [record, ...prev].slice(0, 10);
-      try {
-        localStorage.setItem(RECENT_KEY, JSON.stringify(next));
-      } catch {}
-      return next;
-    });
-  };
-
-  const handleResend = (record: SendRecord) => {
-    setSelected(record.contact);
-    setComposeDefaults({ channel: record.channel, message: record.message });
-    setFillKey((k) => k + 1);
-    // Let React finish rendering the compose area before scrolling
-    setTimeout(
-      () =>
-        document
-          .getElementById("compose-area")
-          ?.scrollIntoView({ behavior: "smooth", block: "start" }),
-      50
-    );
-  };
-
   return (
-    <div className="flex flex-col min-h-full">
-      {/* Header — handles safe-area-inset-top so its background fills the status bar */}
+    <div className="flex flex-col h-full">
       <header
-        className="sticky top-0 z-10 px-4 pb-4 border-b border-border bg-card/90 backdrop-blur-sm"
+        className="sticky top-0 z-10 shrink-0 border-b border-border bg-card/95 backdrop-blur-sm"
         style={{ paddingTop: "calc(env(safe-area-inset-top) + 14px)" }}
       >
-        <div className="flex items-center justify-between gap-3">
-          <h1 className="text-xl font-bold tracking-tight text-foreground">
-            GHL Sender
-          </h1>
-          <div className="flex items-center gap-1">
+        <div className="flex items-center justify-between gap-3 px-4 pb-3">
+          <h1 className="text-xl font-bold tracking-tight text-foreground">GHL Sender</h1>
+          <div className="flex items-center gap-0.5">
             <AccountSwitcher />
+            <Link
+              href="/history"
+              aria-label="Send history"
+              className="h-10 w-10 flex items-center justify-center rounded-full text-muted-foreground active:bg-muted transition-colors"
+            >
+              <History size={18} aria-hidden />
+            </Link>
             <Link
               href="/connections"
               aria-label="Manage accounts"
@@ -87,32 +56,41 @@ export default function Home() {
             </Link>
           </div>
         </div>
+
+        <div className="flex px-4 gap-1 pb-0">
+          {(["contacts", "smart-lists"] as Tab[]).map((tab) => (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => setActiveTab(tab)}
+              className={`flex-1 py-2.5 text-sm font-semibold rounded-t-lg border-b-2 transition-colors ${
+                activeTab === tab
+                  ? "border-foreground text-foreground"
+                  : "border-transparent text-muted-foreground"
+              }`}
+            >
+              {tab === "contacts" ? "Contacts" : "Smart Lists"}
+            </button>
+          ))}
+        </div>
       </header>
 
-      <main className="flex-1 px-4 py-5 max-w-lg mx-auto w-full">
-        <ContactSearch selected={selected} onSelect={setSelected} />
-
-        {/* Compose section — rendered by page so state can be reset on Resend */}
-        {selected && (
-          <div id="compose-area" className="mt-4">
-            <ComposeMessage
-              key={fillKey}
-              contact={selected}
-              defaultChannel={composeDefaults?.channel}
-              defaultMessage={composeDefaults?.message}
-              onSent={handleSent}
-            />
-          </div>
+      <main className="flex-1 min-h-0 flex flex-col overflow-hidden">
+        {activeTab === "contacts" && (
+          <ContactsTab onCompose={(target) => setComposeTarget(target)} />
         )}
-
-        <RecentSends records={recentSends} onResend={handleResend} />
-
-        <footer className="mt-10 pb-28 text-center">
-          <p className="text-xs text-muted-foreground/50 select-none">
-            Powered by GHL API
-          </p>
-        </footer>
+        {activeTab === "smart-lists" && (
+          <SmartListsTab onCompose={(target) => setComposeTarget(target)} />
+        )}
       </main>
+
+      {composeTarget && (
+        <ComposeSheet
+          isOpen={!!composeTarget}
+          target={composeTarget}
+          onClose={() => setComposeTarget(null)}
+        />
+      )}
     </div>
   );
 }

@@ -13,33 +13,12 @@ export default function AddConnectionSheet({ isOpen, onClose }: Props) {
   const [label, setLabel] = useState("");
   const [isConnecting, setIsConnecting] = useState(false);
 
-  const handleConnect = async () => {
+  const handleConnect = () => {
     setIsConnecting(true);
     const params = label.trim()
       ? `?label=${encodeURIComponent(label.trim())}`
       : "";
-    const url = `/api/auth/ghl/connect${params}`;
-
-    try {
-      // Native: open in in-app browser; web: navigate directly
-      const { Capacitor } = await import("@capacitor/core");
-      if (Capacitor.isNativePlatform()) {
-        const { Browser } = await import("@capacitor/browser");
-        await Browser.open({
-          url: `${process.env.NEXT_PUBLIC_API_BASE_URL ?? ""}${url}`,
-          presentationStyle: "popover",
-        });
-        onClose();
-        setLabel("");
-      } else {
-        window.location.href = url;
-      }
-    } catch {
-      // Fallback to direct navigation
-      window.location.href = url;
-    } finally {
-      setIsConnecting(false);
-    }
+    window.location.href = `/api/auth/ghl/connect${params}`;
   };
 
   return (

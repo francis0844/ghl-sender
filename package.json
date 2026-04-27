@@ -5,29 +5,20 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "build:mobile": "node scripts/mobile-build.js",
-    "open:ios": "npx cap open ios",
-    "open:android": "npx cap open android",
     "start": "next start",
     "lint": "eslint"
   },
   "dependencies": {
-    "@capacitor/android": "^8.3.1",
-    "@capacitor/app": "^8.1.0",
-    "@capacitor/browser": "^8.0.3",
-    "@capacitor/cli": "^8.3.1",
-    "@capacitor/core": "^8.3.1",
-    "@capacitor/ios": "^8.3.1",
-    "@capacitor/splash-screen": "^8.0.1",
-    "@capacitor/status-bar": "^8.0.2",
     "@radix-ui/react-slot": "^1.2.4",
     "@supabase/supabase-js": "^2.104.1",
+    "@tanstack/react-virtual": "^3.13.24",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.11.0",
     "next": "16.2.4",
     "react": "19.2.4",
     "react-dom": "19.2.4",
+    "swr": "^2.4.1",
     "tailwind-merge": "^3.5.0"
   },
   "devDependencies": {
