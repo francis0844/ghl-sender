@@ -33,7 +33,7 @@ export default function Home() {
 
   // Redirect to /connections if there are no connected accounts
   useEffect(() => {
-    fetch("/api/connections")
+    fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL ?? ""}/api/connections`)
       .then((r) => r.json())
       .then((d) => {
         if ((d.connections ?? []).length === 0) router.replace("/connections");

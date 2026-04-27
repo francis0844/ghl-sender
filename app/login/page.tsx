@@ -19,7 +19,7 @@ export default function LoginPage() {
     setError("");
 
     try {
-      const res = await fetch("/api/auth", {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL ?? ""}/api/auth`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ password }),

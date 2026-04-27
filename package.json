@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "build:mobile": "NEXT_PUBLIC_API_BASE_URL=https://ghl-sender.vercel.app MOBILE_BUILD=true next build && npx cap sync",
+    "build:mobile": "node scripts/mobile-build.js",
     "open:ios": "npx cap open ios",
     "open:android": "npx cap open android",
     "start": "next start",

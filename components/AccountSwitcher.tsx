@@ -11,6 +11,8 @@ interface Props {
   onSwitch?: (connection: GHLConnection) => void;
 }
 
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
+
 export default function AccountSwitcher({ onSwitch }: Props) {
   const [connections, setConnections] = useState<GHLConnection[]>([]);
   const [isOpen, setIsOpen] = useState(false);
@@ -20,7 +22,7 @@ export default function AccountSwitcher({ onSwitch }: Props) {
   useEffect(() => { setMounted(true); }, []);
 
   const loadConnections = useCallback(() => {
-    fetch("/api/connections")
+    fetch(`${API_BASE}/api/connections`)
       .then((r) => r.json())
       .then((d) => setConnections(d.connections ?? []))
       .catch(() => {});
@@ -40,7 +42,7 @@ export default function AccountSwitcher({ onSwitch }: Props) {
     setIsOpen(false);
 
     try {
-      const res = await fetch("/api/auth/ghl/set-active", {
+      const res = await fetch(`${API_BASE}/api/auth/ghl/set-active`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ connectionId: connection.id }),

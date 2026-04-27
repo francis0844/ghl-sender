@@ -19,6 +19,8 @@ interface ConfirmState {
   label: string;
 }
 
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
+
 export default function ConnectionsManager() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -38,7 +40,7 @@ export default function ConnectionsManager() {
 
   const loadConnections = useCallback(async () => {
     try {
-      const res = await fetch("/api/connections");
+      const res = await fetch(`${API_BASE}/api/connections`);
       const data = await res.json();
       setConnections(data.connections ?? []);
     } catch {
@@ -74,7 +76,7 @@ export default function ConnectionsManager() {
   }, [searchParams, showToast, loadConnections, router]);
 
   const handleSetActive = async (connectionId: string) => {
-    const res = await fetch("/api/auth/ghl/set-active", {
+    const res = await fetch(`${API_BASE}/api/auth/ghl/set-active`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ connectionId }),
@@ -91,7 +93,7 @@ export default function ConnectionsManager() {
   };
 
   const handleRename = async (connectionId: string, newLabel: string) => {
-    const res = await fetch("/api/connections", {
+    const res = await fetch(`${API_BASE}/api/connections`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: connectionId, account_label: newLabel }),
@@ -109,12 +111,12 @@ export default function ConnectionsManager() {
 
   const handleReconnect = (connection: GHLConnection) => {
     const params = `?label=${encodeURIComponent(connection.account_label)}`;
-    window.location.assign(`/api/auth/ghl/connect${params}`);
+    window.location.assign(`${API_BASE}/api/auth/ghl/connect${params}`);
   };
 
   const confirmDisconnect = async () => {
     if (!confirm) return;
-    const res = await fetch("/api/auth/ghl/disconnect", {
+    const res = await fetch(`${API_BASE}/api/auth/ghl/disconnect`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ connectionId: confirm.connectionId }),
