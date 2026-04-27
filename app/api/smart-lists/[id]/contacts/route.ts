@@ -32,11 +32,17 @@ function mapContact(c: GHLContact): Contact {
   };
 }
 
+const VALID_IDS = ["all", "has-phone", "has-email"];
+
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id: smartListId } = await params;
+  const { id: filterId } = await params;
+
+  if (!VALID_IDS.includes(filterId)) {
+    return NextResponse.json({ error: "Unknown filter" }, { status: 404 });
+  }
 
   let accessToken: string, locationId: string;
   try {
@@ -51,36 +57,44 @@ export async function GET(
   const headers = {
     Authorization: `Bearer ${accessToken}`,
     Version: "2021-07-28",
+    "Content-Type": "application/json",
   };
 
   const allContacts: Contact[] = [];
   let page = 1;
-  const limit = 100;
+  const pageLimit = 100;
 
   while (true) {
-    const qs = new URLSearchParams({
-      locationId,
-      smartListId,
-      page: String(page),
-      limit: String(limit),
-    });
-    const res = await fetch(`${GHL_API}/contacts/?${qs}`, {
+    const body: Record<string, unknown> = { locationId, page, pageLimit };
+
+    const res = await fetch(`${GHL_API}/contacts/search`, {
+      method: "POST",
       headers,
+      body: JSON.stringify(body),
       cache: "no-store",
     });
 
     if (!res.ok) {
-      return NextResponse.json({ error: "GHL API error" }, { status: res.status });
+      const detail = await res.text().catch(() => "");
+      return NextResponse.json(
+        { error: "GHL API error", detail },
+        { status: 502 }
+      );
     }
 
-    const data: { contacts?: GHLContact[] } = await res.json();
+    const data = await res.json() as { contacts?: GHLContact[] };
     const batch = data.contacts ?? [];
-    allContacts.push(...batch.map(mapContact));
 
-    if (batch.length < limit) break;
+    for (const c of batch) {
+      const mapped = mapContact(c);
+      if (filterId === "has-phone" && !mapped.hasPhone) continue;
+      if (filterId === "has-email" && !mapped.hasEmail) continue;
+      allContacts.push(mapped);
+    }
+
+    if (batch.length < pageLimit) break;
     page++;
-
-    if (page > 50) break;
+    if (page > 100) break; // safety cap at 10,000 contacts
   }
 
   return NextResponse.json({ contacts: allContacts, total: allContacts.length });

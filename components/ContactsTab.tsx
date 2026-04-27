@@ -56,7 +56,7 @@ export default function ContactsTab({ onCompose }: Props) {
     [debouncedSearch]
   );
 
-  const { data, size, setSize, isLoading, isValidating } = useSWRInfinite<{
+  const { data, error, size, setSize, isLoading, isValidating } = useSWRInfinite<{
     contacts: Contact[];
     total: number;
   }>(getKey, fetcher, { revalidateFirstPage: false });
@@ -129,7 +129,14 @@ export default function ContactsTab({ onCompose }: Props) {
         </div>
       </div>
 
-      {isLoading && !data ? (
+      {error && !data ? (
+        <div className="flex-1 flex flex-col items-center justify-center gap-3 px-6 text-center py-20">
+          <p className="text-sm font-medium text-destructive">Failed to load contacts</p>
+          <p className="text-xs text-muted-foreground">
+            Check that your GHL connection has the &ldquo;contacts.readonly&rdquo; scope.
+          </p>
+        </div>
+      ) : isLoading && !data ? (
         <div className="flex-1 overflow-y-auto">
           {Array.from({ length: 8 }, (_, i) => (
             <div key={i} className="flex items-center gap-3 px-4 py-3 border-b border-border/50">

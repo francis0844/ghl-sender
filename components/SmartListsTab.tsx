@@ -34,14 +34,21 @@ export default function SmartListsTab({ onCompose }: Props) {
 
   const [loadingId, setLoadingId] = useState<string | null>(null);
 
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   const handleSend = async (list: SmartList) => {
     setLoadingId(list.id);
+    setLoadError(null);
     try {
       const res = await fetch(
         `${API_BASE}/api/smart-lists/${encodeURIComponent(list.id)}/contacts`
       );
       if (!res.ok) throw new Error("Failed to load contacts");
       const json: { contacts: Contact[] } = await res.json();
+      if (!json.contacts.length) {
+        setLoadError("No contacts found in this list.");
+        return;
+      }
       onCompose({
         type: "smart-list",
         smartListId: list.id,
@@ -49,7 +56,7 @@ export default function SmartListsTab({ onCompose }: Props) {
         contacts: json.contacts,
       });
     } catch {
-      // Could show toast but keep simple
+      setLoadError("Failed to load contacts. Try again.");
     } finally {
       setLoadingId(null);
     }
@@ -74,7 +81,7 @@ export default function SmartListsTab({ onCompose }: Props) {
   if (error) {
     return (
       <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground px-6 text-center">
-        Failed to load smart lists. Check your GHL connection.
+        Failed to load filters.
       </div>
     );
   }
@@ -91,7 +98,13 @@ export default function SmartListsTab({ onCompose }: Props) {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto">
+    <div className="flex-1 flex flex-col overflow-hidden">
+      {loadError && (
+        <div className="shrink-0 px-4 py-2 bg-destructive/10 text-destructive text-xs text-center">
+          {loadError}
+        </div>
+      )}
+      <div className="flex-1 overflow-y-auto">
       {lists.map((list, idx) => (
         <div
           key={list.id}
@@ -106,10 +119,8 @@ export default function SmartListsTab({ onCompose }: Props) {
 
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-foreground truncate">{list.name}</p>
-            {list.contactsCount != null && (
-              <p className="text-xs text-muted-foreground">
-                {list.contactsCount.toLocaleString()} contacts
-              </p>
+            {list.description && (
+              <p className="text-xs text-muted-foreground truncate">{list.description}</p>
             )}
           </div>
 
@@ -138,6 +149,7 @@ export default function SmartListsTab({ onCompose }: Props) {
           </button>
         </div>
       ))}
+      </div>
     </div>
   );
 }
