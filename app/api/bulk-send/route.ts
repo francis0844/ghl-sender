@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getActiveGHLToken, GHLNotConnectedError } from "@/lib/ghl-token";
 import { getSupabase } from "@/lib/supabase";
 import type { Contact } from "@/types/contact";
+import { renderMessageTemplate } from "@/lib/message-personalization";
 
 const GHL_API = "https://services.leadconnectorhq.com";
 type MessageType = "SMS" | "Email" | "WhatsApp";
@@ -104,7 +105,8 @@ export async function POST(request: NextRequest) {
       let failedCount = 0;
 
       for (const contact of contacts) {
-        const ok = await sendOne(contact.contactId, messageType, message.trim(), locationId, accessToken);
+        const personalizedMessage = renderMessageTemplate(message.trim(), contact);
+        const ok = await sendOne(contact.contactId, messageType, personalizedMessage, locationId, accessToken);
         if (ok) sentCount++;
         else failedCount++;
 
