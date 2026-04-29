@@ -9,6 +9,9 @@ import ContactsTab from "@/components/ContactsTab";
 import SmartListsTab from "@/components/SmartListsTab";
 import ComposeSheet from "@/components/ComposeSheet";
 import type { Contact } from "@/types/contact";
+import type { GHLConnection } from "@/types/ghl-connection";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 
 type Tab = "contacts" | "smart-lists";
 
@@ -20,12 +23,16 @@ export default function Home() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<Tab>("contacts");
   const [composeTarget, setComposeTarget] = useState<ComposeTarget | null>(null);
+  const [activeConnectionId, setActiveConnectionId] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL ?? ""}/api/connections`)
+    fetch(`${API_BASE}/api/connections`)
       .then((r) => r.json())
       .then((d) => {
-        if ((d.connections ?? []).length === 0) router.replace("/connections");
+        const connections: GHLConnection[] = d.connections ?? [];
+        if (connections.length === 0) router.replace("/connections");
+        const active = connections.find((c) => c.is_active);
+        if (active) setActiveConnectionId(active.id);
       })
       .catch(() => {});
   }, [router]);
@@ -39,7 +46,7 @@ export default function Home() {
         <div className="flex items-center justify-between gap-3 px-4 pb-3">
           <h1 className="text-xl font-bold tracking-tight text-foreground">GHL Sender</h1>
           <div className="flex items-center gap-0.5">
-            <AccountSwitcher />
+            <AccountSwitcher onSwitch={(conn: GHLConnection) => setActiveConnectionId(conn.id)} />
             <Link
               href="/history"
               aria-label="Send history"
@@ -80,7 +87,7 @@ export default function Home() {
           <ContactsTab onCompose={(target) => setComposeTarget(target)} />
         )}
         {activeTab === "smart-lists" && (
-          <SmartListsTab onCompose={(target) => setComposeTarget(target)} />
+          <SmartListsTab onCompose={(target) => setComposeTarget(target)} connectionId={activeConnectionId} />
         )}
       </main>
 

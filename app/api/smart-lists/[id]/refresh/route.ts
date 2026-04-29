@@ -2,10 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { getActiveGHLToken, GHLNotConnectedError } from "@/lib/ghl-token";
 import { getSupabase } from "@/lib/supabase";
 import { resolveAllFiltered } from "@/lib/contact-resolver";
-import type { Contact } from "@/types/contact";
 import type { ContactFilter } from "@/types/filter";
 
-export async function GET(
+export async function POST(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -34,34 +33,30 @@ export async function GET(
     return NextResponse.json({ error: "Smart list not found" }, { status: 404 });
   }
 
-  if (list.source_type === "local_dynamic") {
-    const filterRules = list.filter_rules as ContactFilter | null;
-    if (!filterRules) {
-      return NextResponse.json({ contacts: [], total: 0, resolvedLive: true });
-    }
-    const { contacts } = await resolveAllFiltered(
-      accessToken,
-      locationId,
-      filterRules,
-      list.search_query ?? undefined,
+  if (list.source_type !== "local_dynamic") {
+    return NextResponse.json(
+      { error: "Refresh is only supported for dynamic lists" },
+      { status: 400 },
     );
-    return NextResponse.json({ contacts, total: contacts.length, resolvedLive: true });
   }
 
-  // local_manual: read stored snapshots
-  const { data: rows, error: rowsErr } = await supabase
-    .from("app_smart_list_contacts")
-    .select("contact_snapshot")
-    .eq("smart_list_id", id)
-    .order("created_at", { ascending: true });
-
-  if (rowsErr) {
-    return NextResponse.json({ error: "Failed to fetch contacts" }, { status: 500 });
+  const filterRules = list.filter_rules as ContactFilter | null;
+  if (!filterRules) {
+    return NextResponse.json({ error: "No filter rules configured" }, { status: 400 });
   }
 
-  const contacts = (rows ?? [])
-    .map((r) => r.contact_snapshot as Contact)
-    .filter(Boolean);
+  const { contacts, capped } = await resolveAllFiltered(
+    accessToken,
+    locationId,
+    filterRules,
+    list.search_query ?? undefined,
+  );
 
-  return NextResponse.json({ contacts, total: contacts.length, resolvedLive: false });
+  const lastRefreshedAt = new Date().toISOString();
+  await supabase
+    .from("app_smart_lists")
+    .update({ cached_contact_count: contacts.length, last_refreshed_at: lastRefreshedAt })
+    .eq("id", id);
+
+  return NextResponse.json({ count: contacts.length, capped, lastRefreshedAt });
 }

@@ -11,7 +11,7 @@ import type { ContactFilter } from "@/types/filter";
 import { FIELD_LABELS, OPERATOR_LABELS, VALUELESS_OPERATORS } from "@/types/filter";
 import type { FilterField, FilterOperator } from "@/types/filter";
 import type { ComposeTarget } from "@/app/page";
-import SaveListSheet from "@/components/SaveListSheet";
+import CreateSmartListSheet, { type CreateMode } from "@/components/CreateSmartListSheet";
 import ContactFilterSheet from "@/components/ContactFilterSheet";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
@@ -86,7 +86,7 @@ export default function ContactsTab({ onCompose }: Props) {
   // "Select all matching filter" mode (no IDs stored)
   const [filterSelMode, setFilterSelMode] = useState(false);
 
-  const [saveSheetOpen, setSaveSheetOpen] = useState(false);
+  const [createListOpen, setCreateListOpen] = useState(false);
 
   const parentRef = useRef<HTMLDivElement>(null);
 
@@ -485,12 +485,8 @@ export default function ContactsTab({ onCompose }: Props) {
           </button>
           <button
             type="button"
-            disabled={filterSelMode}
-            onClick={() => !filterSelMode && setSaveSheetOpen(true)}
-            className={cn(
-              "flex items-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-full border border-border text-foreground active:bg-muted transition-colors",
-              filterSelMode && "opacity-40",
-            )}
+            onClick={() => setCreateListOpen(true)}
+            className="flex items-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-full border border-border text-foreground active:bg-muted transition-colors"
           >
             <BookmarkPlus size={14} />
             Save List
@@ -512,12 +508,24 @@ export default function ContactsTab({ onCompose }: Props) {
         </div>
       )}
 
-      <SaveListSheet
-        isOpen={saveSheetOpen}
-        contacts={selectedContacts}
-        onClose={() => setSaveSheetOpen(false)}
-        onSaved={() => {
-          setSaveSheetOpen(false);
+      <CreateSmartListSheet
+        isOpen={createListOpen}
+        createMode={
+          filterSelMode
+            ? ({
+                mode: "dynamic",
+                filterRules: appliedFilter,
+                searchQuery: debouncedSearch || undefined,
+                estimatedCount: filteredTotal ?? 0,
+              } satisfies CreateMode)
+            : ({
+                mode: "manual",
+                contacts: selectedContacts,
+              } satisfies CreateMode)
+        }
+        onClose={() => setCreateListOpen(false)}
+        onCreated={() => {
+          setCreateListOpen(false);
           clearSelection();
         }}
       />
