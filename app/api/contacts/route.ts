@@ -37,6 +37,7 @@ export async function GET(request: NextRequest) {
   const page = Math.max(1, parseInt(params.get("page") ?? "1"));
   const limit = Math.min(100, Math.max(1, parseInt(params.get("limit") ?? "20")));
   const search = params.get("search")?.trim() ?? "";
+  const tag = params.get("tag")?.trim() ?? "";
 
   let accessToken: string, locationId: string;
   try {
@@ -54,39 +55,46 @@ export async function GET(request: NextRequest) {
     "Content-Type": "application/json",
   };
 
-  // Use POST /contacts/search for both listing and searching — it supports page-based
-  // pagination and works with or without a search query.
-  const body: Record<string, unknown> = {
-    locationId,
-    page,
-    pageLimit: limit,
-  };
-  if (search.length >= 1) body.query = search;
+  let rawData: { contacts?: GHLContact[]; total?: number; count?: number; meta?: { total?: number } };
 
-  const res = await fetch(`${GHL_API}/contacts/search`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body),
-    cache: "no-store",
-  });
+  if (tag) {
+    // Tag filtering — GHL GET endpoint supports tags[] query param
+    const qs = new URLSearchParams({ locationId, limit: String(limit) });
+    if (page > 1) qs.set("page", String(page));
+    qs.append("tags[]", tag);
+    if (search.length >= 1) qs.set("query", search);
 
-  if (!res.ok) {
-    const detail = await res.text().catch(() => "");
-    return NextResponse.json(
-      { error: "GHL API error", status: res.status, detail },
-      { status: 502 }
-    );
+    const res = await fetch(`${GHL_API}/contacts/?${qs}`, {
+      headers,
+      cache: "no-store",
+    });
+
+    if (!res.ok) {
+      const detail = await res.text().catch(() => "");
+      return NextResponse.json({ error: "GHL API error", status: res.status, detail }, { status: 502 });
+    }
+    rawData = await res.json();
+  } else {
+    // General listing / text search — POST search supports page-based pagination
+    const body: Record<string, unknown> = { locationId, page, pageLimit: limit };
+    if (search.length >= 1) body.query = search;
+
+    const res = await fetch(`${GHL_API}/contacts/search`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+      cache: "no-store",
+    });
+
+    if (!res.ok) {
+      const detail = await res.text().catch(() => "");
+      return NextResponse.json({ error: "GHL API error", status: res.status, detail }, { status: 502 });
+    }
+    rawData = await res.json();
   }
 
-  const data = await res.json() as {
-    contacts?: GHLContact[];
-    total?: number;
-    count?: number;
-    meta?: { total?: number };
-  };
-
-  const contacts = (data.contacts ?? []).map(mapContact);
-  const total = data.total ?? data.meta?.total ?? data.count ?? contacts.length;
+  const contacts = (rawData.contacts ?? []).map(mapContact);
+  const total = rawData.total ?? rawData.meta?.total ?? rawData.count ?? contacts.length;
 
   return NextResponse.json({ contacts, total, page, limit });
 }

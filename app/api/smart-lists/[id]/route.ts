@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getActiveGHLToken, GHLNotConnectedError } from "@/lib/ghl-token";
 import { getSupabase } from "@/lib/supabase";
-import type { Contact } from "@/types/contact";
 
-export async function GET(
+export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -19,16 +18,16 @@ export async function GET(
     throw e;
   }
 
-  const { data, error } = await getSupabase()
+  // Ensure the list belongs to the active connection
+  const { error } = await getSupabase()
     .from("smart_lists")
-    .select("contacts")
+    .delete()
     .eq("id", id)
-    .eq("connection_id", connectionId)
-    .single();
+    .eq("connection_id", connectionId);
 
-  if (error || !data) {
-    return NextResponse.json({ error: "Smart list not found" }, { status: 404 });
+  if (error) {
+    return NextResponse.json({ error: "Delete failed" }, { status: 500 });
   }
 
-  return NextResponse.json({ contacts: (data.contacts as Contact[]) ?? [] });
+  return NextResponse.json({ success: true });
 }
