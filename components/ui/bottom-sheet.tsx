@@ -7,9 +7,10 @@ interface BottomSheetProps {
   onClose: () => void;
   title?: string;
   children: React.ReactNode;
+  footer?: React.ReactNode;
 }
 
-export function BottomSheet({ isOpen, onClose, title, children }: BottomSheetProps) {
+export function BottomSheet({ isOpen, onClose, title, children, footer }: BottomSheetProps) {
   // Lock body scroll while open
   useEffect(() => {
     if (isOpen) {
@@ -48,7 +49,8 @@ export function BottomSheet({ isOpen, onClose, title, children }: BottomSheetPro
             <h3 className="text-base font-semibold text-foreground">{title}</h3>
           </div>
         )}
-        <div className="overflow-y-auto">{children}</div>
+        <div className="overflow-y-auto flex-1 min-h-0">{children}</div>
+        {footer}
       </div>
     </div>
   );

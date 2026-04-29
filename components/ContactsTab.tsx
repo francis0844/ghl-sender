@@ -3,21 +3,52 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import useSWRInfinite from "swr/infinite";
-import { Search, X, BookmarkPlus } from "lucide-react";
+import { Search, X, BookmarkPlus, SlidersHorizontal } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { Contact } from "@/types/contact";
+import type { ContactFilter } from "@/types/filter";
+import { FIELD_LABELS, OPERATOR_LABELS, VALUELESS_OPERATORS } from "@/types/filter";
+import type { FilterField, FilterOperator } from "@/types/filter";
 import type { ComposeTarget } from "@/app/page";
 import SaveListSheet from "@/components/SaveListSheet";
+import ContactFilterSheet from "@/components/ContactFilterSheet";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 const PAGE_SIZE = 20;
 
-const fetcher = (url: string) =>
-  fetch(`${API_BASE}${url}`).then((r) => {
-    if (!r.ok) throw new Error("fetch failed");
-    return r.json();
-  });
+const EMPTY_FILTER: ContactFilter = { logic: "AND", groups: [] };
+
+// Key types for useSWRInfinite: string for list mode, tuple for filter mode
+type FilterKey = readonly ["filter", number, string, ContactFilter];
+type PageKey = string | FilterKey;
+
+type PageData = {
+  contacts: Contact[];
+  total: number;
+  hasMore?: boolean;
+};
+
+async function fetcher(key: PageKey): Promise<PageData> {
+  if (Array.isArray(key)) {
+    const [, page, search, filterRules] = key as FilterKey;
+    const res = await fetch(`${API_BASE}/api/contacts/filter`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        page,
+        limit: PAGE_SIZE,
+        search: search || undefined,
+        filter_rules: filterRules,
+      }),
+    });
+    if (!res.ok) throw new Error("fetch failed");
+    return res.json();
+  }
+  const res = await fetch(`${API_BASE}${key}`);
+  if (!res.ok) throw new Error("fetch failed");
+  return res.json();
+}
 
 interface Props {
   onCompose: (target: ComposeTarget) => void;
@@ -29,62 +60,83 @@ function getInitials(name: string): string {
   return name.slice(0, 2).toUpperCase() || "?";
 }
 
+function conditionChipLabel(
+  field: FilterField,
+  operator: FilterOperator,
+  value?: string | boolean,
+): string {
+  const fl = FIELD_LABELS[field];
+  const ol = OPERATOR_LABELS[operator];
+  if (VALUELESS_OPERATORS.includes(operator)) return `${fl}: ${ol}`;
+  const v = typeof value === "string" ? value : String(value ?? "");
+  return `${fl}: "${v}"`;
+}
+
 export default function ContactsTab({ onCompose }: Props) {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [activeTag, setActiveTag] = useState<string | null>(null);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  // Applied filter (drives API calls); pending filter (in-progress edits in the sheet)
+  const [appliedFilter, setAppliedFilter] = useState<ContactFilter>(EMPTY_FILTER);
+  const [pendingFilter, setPendingFilter] = useState<ContactFilter>(EMPTY_FILTER);
+  const [filterSheetOpen, setFilterSheetOpen] = useState(false);
+
+  // Explicit per-contact selection
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // "Select all matching filter" mode (no IDs stored)
+  const [filterSelMode, setFilterSelMode] = useState(false);
+
   const [saveSheetOpen, setSaveSheetOpen] = useState(false);
+
   const parentRef = useRef<HTMLDivElement>(null);
 
+  const isFiltered = appliedFilter.groups.length > 0;
+
+  // Debounce search
   useEffect(() => {
     const id = setTimeout(() => setDebouncedSearch(search), 350);
     return () => clearTimeout(id);
   }, [search]);
 
-  // Reset selection when filters change
+  // Reset selection when filters or search change
   useEffect(() => {
-    setSelected(new Set());
-  }, [debouncedSearch, activeTag]);
+    setSelectedIds(new Set());
+    setFilterSelMode(false);
+  }, [debouncedSearch, appliedFilter]);
 
   const getKey = useCallback(
-    (pageIndex: number, previousData: { contacts: Contact[] } | null) => {
+    (pageIndex: number, previousData: PageData | null): PageKey | null => {
+      if (isFiltered) {
+        if (previousData && previousData.hasMore === false) return null;
+        return ["filter", pageIndex + 1, debouncedSearch, appliedFilter] as const;
+      }
       if (previousData && previousData.contacts.length < PAGE_SIZE) return null;
       const qs = new URLSearchParams({
         page: String(pageIndex + 1),
         limit: String(PAGE_SIZE),
       });
       if (debouncedSearch.length >= 1) qs.set("search", debouncedSearch);
-      if (activeTag) qs.set("tag", activeTag);
       return `/api/contacts?${qs}`;
     },
-    [debouncedSearch, activeTag]
+    [debouncedSearch, isFiltered, appliedFilter],
   );
 
-  const { data, error, size, setSize, isLoading, isValidating } = useSWRInfinite<{
-    contacts: Contact[];
-    total: number;
-  }>(getKey, fetcher, { revalidateFirstPage: false });
+  const { data, error, size, setSize, isLoading, isValidating } =
+    useSWRInfinite<PageData>(getKey, fetcher, { revalidateFirstPage: false });
 
   const contacts: Contact[] = useMemo(
     () => (data ? data.flatMap((d) => d.contacts ?? []) : []),
-    [data]
+    [data],
   );
 
-  // Collect unique tags from all loaded contacts
-  const availableTags = useMemo(() => {
-    const tagSet = new Set<string>();
-    for (const page of data ?? []) {
-      for (const c of page.contacts ?? []) {
-        for (const t of c.tags) tagSet.add(t);
-      }
-    }
-    return [...tagSet].sort();
-  }, [data]);
+  const filteredTotal = isFiltered ? (data?.[0]?.total ?? null) : null;
 
-  const hasMore = (data?.[data.length - 1]?.contacts?.length ?? 0) >= PAGE_SIZE;
+  const lastPage = data?.[data.length - 1];
+  const hasMore = isFiltered
+    ? (lastPage?.hasMore === true)
+    : ((lastPage?.contacts?.length ?? 0) >= PAGE_SIZE);
+
   const isLoadingMore = isValidating && size > 1;
-
   const rowCount = contacts.length + (hasMore ? 1 : 0);
 
   const virtualizer = useVirtualizer({
@@ -96,6 +148,7 @@ export default function ContactsTab({ onCompose }: Props) {
 
   const virtualItems = virtualizer.getVirtualItems();
 
+  // Infinite scroll trigger
   useEffect(() => {
     const lastItem = virtualItems[virtualItems.length - 1];
     if (!lastItem) return;
@@ -105,7 +158,8 @@ export default function ContactsTab({ onCompose }: Props) {
   }, [virtualItems, contacts.length, hasMore, isLoadingMore, setSize]);
 
   const toggleSelect = useCallback((id: string) => {
-    setSelected((prev) => {
+    setFilterSelMode(false);
+    setSelectedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -113,76 +167,157 @@ export default function ContactsTab({ onCompose }: Props) {
     });
   }, []);
 
+  const selectAllLoaded = useCallback(() => {
+    setFilterSelMode(false);
+    setSelectedIds(new Set(contacts.map((c) => c.contactId)));
+  }, [contacts]);
+
+  const clearSelection = useCallback(() => {
+    setSelectedIds(new Set());
+    setFilterSelMode(false);
+  }, []);
+
   const selectedContacts = useMemo(
-    () => contacts.filter((c) => selected.has(c.contactId)),
-    [contacts, selected]
+    () => contacts.filter((c) => selectedIds.has(c.contactId)),
+    [contacts, selectedIds],
   );
+
+  // Banner: all loaded contacts are selected, filter active, more exist beyond what's loaded
+  const showSelectAllBanner =
+    isFiltered &&
+    !filterSelMode &&
+    contacts.length > 0 &&
+    selectedIds.size === contacts.length &&
+    filteredTotal !== null &&
+    filteredTotal > contacts.length;
+
+  const hasSelection = selectedIds.size > 0 || filterSelMode;
+
+  // Build filter chips for display
+  const filterChips = useMemo(() => {
+    const chips: { label: string; groupIdx: number; condIdx: number }[] = [];
+    appliedFilter.groups.forEach((g, gi) => {
+      g.conditions.forEach((c, ci) => {
+        chips.push({
+          label: conditionChipLabel(c.field, c.operator, c.value),
+          groupIdx: gi,
+          condIdx: ci,
+        });
+      });
+    });
+    return chips;
+  }, [appliedFilter]);
+
+  const removeFilterChip = useCallback(
+    (groupIdx: number, condIdx: number) => {
+      const groups = appliedFilter.groups
+        .map((g, gi) => {
+          if (gi !== groupIdx) return g;
+          return { ...g, conditions: g.conditions.filter((_, ci) => ci !== condIdx) };
+        })
+        .filter((g) => g.conditions.length > 0);
+      setAppliedFilter({ ...appliedFilter, groups });
+    },
+    [appliedFilter],
+  );
+
+  const openFilterSheet = useCallback(() => {
+    setPendingFilter(appliedFilter);
+    setFilterSheetOpen(true);
+  }, [appliedFilter]);
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      {/* Search bar */}
+      {/* Search bar + filter button */}
       <div className="px-4 pt-3 pb-2 shrink-0">
-        <div className="relative">
-          <Search
-            size={16}
-            aria-hidden
-            className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
-          />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search contacts…"
-            className="pl-9 pr-9"
-            autoComplete="off"
-            autoCorrect="off"
-            autoCapitalize="none"
-            spellCheck={false}
-          />
-          {search && (
-            <button
-              type="button"
-              onClick={() => setSearch("")}
-              aria-label="Clear search"
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-            >
-              <X size={14} />
-            </button>
-          )}
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <Search
+              size={16}
+              aria-hidden
+              className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
+            />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search contacts…"
+              className="pl-9 pr-9"
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="none"
+              spellCheck={false}
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch("")}
+                aria-label="Clear search"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={openFilterSheet}
+            aria-label="Filter contacts"
+            className={cn(
+              "h-10 w-10 flex items-center justify-center rounded-xl border transition-colors shrink-0",
+              isFiltered
+                ? "bg-foreground text-background border-foreground"
+                : "border-border text-muted-foreground",
+            )}
+          >
+            <SlidersHorizontal size={16} />
+          </button>
         </div>
       </div>
 
-      {/* Tag filter chips */}
-      {availableTags.length > 0 && (
+      {/* Active filter chips */}
+      {filterChips.length > 0 && (
         <div className="shrink-0 px-4 pb-2 overflow-x-auto">
-          <div className="flex gap-2 w-max">
+          <div className="flex gap-2 w-max items-center">
+            {filterChips.map((chip) => (
+              <span
+                key={`${chip.groupIdx}-${chip.condIdx}`}
+                className="flex items-center gap-1 pl-2.5 pr-1.5 py-1 rounded-full bg-foreground/10 text-xs font-medium text-foreground whitespace-nowrap"
+              >
+                {chip.label}
+                <button
+                  type="button"
+                  onClick={() => removeFilterChip(chip.groupIdx, chip.condIdx)}
+                  aria-label={`Remove filter: ${chip.label}`}
+                  className="flex items-center justify-center w-4 h-4 rounded-full text-foreground/50 active:text-foreground"
+                >
+                  <X size={10} />
+                </button>
+              </span>
+            ))}
             <button
               type="button"
-              onClick={() => setActiveTag(null)}
-              className={cn(
-                "px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap border transition-colors",
-                !activeTag
-                  ? "bg-foreground text-background border-foreground"
-                  : "border-border text-muted-foreground"
-              )}
+              onClick={() => setAppliedFilter(EMPTY_FILTER)}
+              className="text-xs text-muted-foreground active:text-foreground px-1"
             >
-              All
+              Clear all
             </button>
-            {availableTags.map((tag) => (
-              <button
-                key={tag}
-                type="button"
-                onClick={() => setActiveTag(activeTag === tag ? null : tag)}
-                className={cn(
-                  "px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap border transition-colors",
-                  activeTag === tag
-                    ? "bg-foreground text-background border-foreground"
-                    : "border-border text-muted-foreground"
-                )}
-              >
-                {tag}
-              </button>
-            ))}
           </div>
+        </div>
+      )}
+
+      {/* Filter match count + "Select all loaded" */}
+      {isFiltered && !hasSelection && filteredTotal !== null && contacts.length > 0 && (
+        <div className="shrink-0 px-4 pb-2 flex items-center justify-between">
+          <span className="text-xs text-muted-foreground">
+            {filteredTotal.toLocaleString()} contact{filteredTotal !== 1 ? "s" : ""} match
+          </span>
+          <button
+            type="button"
+            onClick={selectAllLoaded}
+            className="text-xs font-semibold text-primary"
+          >
+            Select {contacts.length} loaded
+          </button>
         </div>
       )}
 
@@ -209,12 +344,12 @@ export default function ContactsTab({ onCompose }: Props) {
           ))}
         </div>
       ) : contacts.length === 0 && !isLoading ? (
-        <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
-          {activeTag
-            ? `No contacts tagged "${activeTag}"`
+        <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm px-6 text-center">
+          {isFiltered
+            ? "No contacts match your filters"
             : debouncedSearch.length >= 1
-            ? "No contacts found"
-            : "No contacts"}
+              ? "No contacts found"
+              : "No contacts"}
         </div>
       ) : (
         <div ref={parentRef} className="flex-1 overflow-y-auto">
@@ -224,7 +359,13 @@ export default function ContactsTab({ onCompose }: Props) {
                 return (
                   <div
                     key="loader"
-                    style={{ position: "absolute", top: item.start, left: 0, right: 0, height: item.size }}
+                    style={{
+                      position: "absolute",
+                      top: item.start,
+                      left: 0,
+                      right: 0,
+                      height: item.size,
+                    }}
                     className="flex items-center justify-center"
                   >
                     <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground animate-spin" />
@@ -233,7 +374,7 @@ export default function ContactsTab({ onCompose }: Props) {
               }
 
               const contact = contacts[item.index];
-              const isSelected = selected.has(contact.contactId);
+              const isSelected = filterSelMode || selectedIds.has(contact.contactId);
 
               return (
                 <div
@@ -243,10 +384,11 @@ export default function ContactsTab({ onCompose }: Props) {
                   style={{ position: "absolute", top: item.start, left: 0, right: 0 }}
                   className={cn(
                     "flex items-center gap-3 px-4 py-3 border-b border-border/50 cursor-pointer active:bg-muted/50 transition-colors",
-                    isSelected && "bg-primary/5"
+                    isSelected && "bg-primary/5",
                   )}
                   onClick={() => {
-                    if (selected.size > 0) toggleSelect(contact.contactId);
+                    if (filterSelMode) return;
+                    if (selectedIds.size > 0) toggleSelect(contact.contactId);
                     else onCompose({ type: "contacts", contacts: [contact] });
                   }}
                 >
@@ -257,11 +399,15 @@ export default function ContactsTab({ onCompose }: Props) {
                       "h-10 w-10 rounded-full flex items-center justify-center shrink-0 text-sm font-bold transition-colors",
                       isSelected
                         ? "bg-foreground text-background"
-                        : "bg-muted text-muted-foreground"
+                        : "bg-muted text-muted-foreground",
                     )}
                     onClick={(e) => {
                       e.stopPropagation();
-                      toggleSelect(contact.contactId);
+                      if (filterSelMode) {
+                        setFilterSelMode(false);
+                      } else {
+                        toggleSelect(contact.contactId);
+                      }
                     }}
                   >
                     {isSelected ? "✓" : getInitials(contact.name)}
@@ -284,7 +430,7 @@ export default function ContactsTab({ onCompose }: Props) {
                     </div>
                   </div>
 
-                  {!isSelected && selected.size === 0 && (
+                  {!isSelected && selectedIds.size === 0 && !filterSelMode && (
                     <button
                       type="button"
                       onClick={(e) => {
@@ -303,36 +449,65 @@ export default function ContactsTab({ onCompose }: Props) {
         </div>
       )}
 
-      {/* Selection bar */}
-      {selected.size > 0 && (
+      {/* "Select all matching" banner */}
+      {showSelectAllBanner && (
+        <div className="shrink-0 mx-4 mb-2 mt-1 px-4 py-3 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-between gap-3">
+          <p className="text-xs text-foreground">
+            All {contacts.length} loaded contacts selected
+          </p>
+          <button
+            type="button"
+            onClick={() => setFilterSelMode(true)}
+            className="text-xs font-semibold text-primary shrink-0"
+          >
+            Select all {filteredTotal?.toLocaleString()}
+          </button>
+        </div>
+      )}
+
+      {/* Sticky bottom action bar */}
+      {hasSelection && (
         <div
           className="shrink-0 px-4 py-3 bg-card border-t border-border flex items-center gap-2"
           style={{ paddingBottom: "max(env(safe-area-inset-bottom), 12px)" }}
         >
           <span className="text-sm font-medium text-foreground flex-1">
-            {selected.size} selected
+            {filterSelMode
+              ? `All ${filteredTotal?.toLocaleString() ?? "…"} selected`
+              : `${selectedIds.size} selected`}
           </span>
           <button
             type="button"
-            onClick={() => setSelected(new Set())}
+            onClick={clearSelection}
             className="text-sm text-muted-foreground px-2 py-1"
           >
             Clear
           </button>
           <button
             type="button"
-            onClick={() => setSaveSheetOpen(true)}
-            className="flex items-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-full border border-border text-foreground active:bg-muted transition-colors"
+            disabled={filterSelMode}
+            onClick={() => !filterSelMode && setSaveSheetOpen(true)}
+            className={cn(
+              "flex items-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-full border border-border text-foreground active:bg-muted transition-colors",
+              filterSelMode && "opacity-40",
+            )}
           >
             <BookmarkPlus size={14} />
             Save List
           </button>
           <button
             type="button"
-            onClick={() => onCompose({ type: "contacts", contacts: selectedContacts })}
-            className="bg-foreground text-background text-sm font-semibold px-4 py-2 rounded-full active:opacity-80 transition-opacity"
+            disabled={filterSelMode}
+            onClick={() => {
+              if (!filterSelMode)
+                onCompose({ type: "contacts", contacts: selectedContacts });
+            }}
+            className={cn(
+              "bg-foreground text-background text-sm font-semibold px-4 py-2 rounded-full active:opacity-80 transition-opacity",
+              filterSelMode && "opacity-40",
+            )}
           >
-            Send {selected.size}
+            {filterSelMode ? "Send (next phase)" : `Send ${selectedIds.size}`}
           </button>
         </div>
       )}
@@ -343,8 +518,20 @@ export default function ContactsTab({ onCompose }: Props) {
         onClose={() => setSaveSheetOpen(false)}
         onSaved={() => {
           setSaveSheetOpen(false);
-          setSelected(new Set());
+          clearSelection();
         }}
+      />
+
+      <ContactFilterSheet
+        isOpen={filterSheetOpen}
+        filter={pendingFilter}
+        onFilterChange={setPendingFilter}
+        onClose={() => setFilterSheetOpen(false)}
+        onApply={() => {
+          setAppliedFilter(pendingFilter);
+          setFilterSheetOpen(false);
+        }}
+        onClear={() => setPendingFilter(EMPTY_FILTER)}
       />
     </div>
   );
